@@ -12,6 +12,8 @@ from app.models.user import User, UserRole
 from app.schemas.auth import SendOTPRequest, RegisterRequest, TokenResponse, LoginRequest, ResetPasswordRequest
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
+from app.core.limiter import limiter
+from fastapi import Request
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 bearer_scheme = HTTPBearer()
@@ -69,21 +71,23 @@ class DeleteAccountRequest(BaseModel):                          # ✅ NEW
 # ─── Existing endpoints ───────────────────────────────────────
 
 @router.post("/send-otp")
-def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/5minute")
+def send_otp(request: Request, body: SendOTPRequest, db: Session = Depends(get_db)):
     """Send OTP to phone. Returns code in response (dev only)."""
-    purpose = OTPPurpose(request.purpose)
-    code = create_otp(db, phone=request.phone, purpose=purpose)
+    purpose = OTPPurpose(body.purpose)
+    code = create_otp(db, phone=body.phone, purpose=purpose)
     return {
-        "message": f"OTP sent to {request.phone}",
+        "message": f"OTP sent to {body.phone}",
         "otp": code  # ⚠️ REMOVE IN PRODUCTION
     }
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(request: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/10minute")
+def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     """Verify OTP + create user account + return JWT token."""
     otp_valid = verify_otp(
-        db, phone=request.phone, code=request.otp_code,
+        db, phone=body.phone, code=body.otp_code,
         purpose=OTPPurpose.registration
     )
     if not otp_valid:
@@ -93,15 +97,15 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     # On account deletion we rename the deleted user's phone to
     # "deleted_<user.id>" — so the original phone is free to reuse here.
     # No filter on is_active needed; the DB already won't match deleted phones.
-    existing = db.query(User).filter(User.phone == request.phone).first()
+    existing = db.query(User).filter(User.phone == body.phone).first()
     if existing:
         raise HTTPException(status_code=400, detail="Phone already registered")
 
     new_user = User(
-        phone=request.phone,
-        full_name=request.name,
-        display_name=request.name,
-        password_hash=hash_password(request.password),
+        phone=body.phone,
+        full_name=body.name,
+        display_name=body.name,
+        password_hash=hash_password(body.password),
         role=UserRole.user,
         village_id=1,
         is_durbe_resident=False,
@@ -122,14 +126,15 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     """Login with phone + password."""
-    user = db.query(User).filter(User.phone == request.phone).first()
+    user = db.query(User).filter(User.phone == body.phone).first()
     if not user:
         raise HTTPException(status_code=400,
             detail="No account found with this phone number")
 
-    if not verify_password(request.password, user.password_hash):
+    if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect password")
 
     if not user.is_active:
@@ -157,21 +162,22 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/reset-password", response_model=TokenResponse)
-def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def reset_password(request: Request, body: ResetPasswordRequest, db: Session = Depends(get_db)):
     """Reset forgotten password using OTP verification."""
-    user = db.query(User).filter(User.phone == request.phone).first()
+    user = db.query(User).filter(User.phone == body.phone).first()
     if not user:
         raise HTTPException(status_code=400,
             detail="No account found with this phone number")
 
     otp_valid = verify_otp(
-        db, phone=request.phone, code=request.otp_code,
+        db, phone=body.phone, code=body.otp_code,
         purpose=OTPPurpose.reset_password
     )
     if not otp_valid:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    user.password_hash = hash_password(request.new_password)
+    user.password_hash = hash_password(body.new_password)
     db.commit()
 
     token = create_access_token(data={

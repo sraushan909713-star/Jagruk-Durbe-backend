@@ -18,6 +18,9 @@
 # ============================================================
 
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler                   # ✅ CHANGE
+from slowapi.errors import RateLimitExceeded                       # ✅ keep
+from app.core.limiter import limiter                               # ✅ CHANGE — import from new file 
 from app.database import engine, Base
 from app.routers import auth, weather, schemes, contact, guides, gram_awaaz, vikas_prastav, gram_sabha, neta_report_card, vendor_listings, job_alerts, community_members, banners, promises
 
@@ -42,12 +45,16 @@ from app.models import promise as promise_model
 # Safe to run every startup — skips tables that already exist.
 Base.metadata.create_all(bind=engine)
 
-# Create the FastAPI app instance.›
+# Create the FastAPI app instance.
 app = FastAPI(
     title="Gram Seva API",
     version="1.0.0",
     description="Backend API for Gram Seva — Jagruk Durbe"
 )
+
+# ── Rate limiter ────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(auth.router)
 app.include_router(weather.router)

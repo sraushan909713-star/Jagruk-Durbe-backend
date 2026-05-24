@@ -3,7 +3,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    SECRET_KEY: str = "change-this-in-production"
+    SECRET_KEY: str = "zOvmmx7AGLJB4KMKFklaOto9_J25sFjHN5XMjqrlpv3dK98avUoEePhJ6ZFcj-29yvBkYcvFBhzmnkoc-WIvCA"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
 

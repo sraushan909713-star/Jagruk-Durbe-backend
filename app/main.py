@@ -1,32 +1,21 @@
 # ============================================================
 # main.py — Application Entry Point
 # ============================================================
-# This is the first file FastAPI reads when the server starts.
-# It creates the FastAPI app instance and registers everything.
-#
-# IMPORTS FROM: app/database.py (engine, Base)
-#               app/models/user.py (User table)
-#               app/models/otp.py  (OTP table)
-# IMPORTED BY:  nothing — this is the top of the chain
-#
-# STARTUP SEQUENCE:
-#   1. Models are imported → they register themselves with Base
-#   2. create_all() sees all registered models → creates tables
-#   3. FastAPI app is created
-#   4. Routers are registered (we'll add these soon)
-#   5. Server starts listening for requests
-# ============================================================
 
 from fastapi import FastAPI
-from slowapi import _rate_limit_exceeded_handler                   # ✅ CHANGE
-from slowapi.errors import RateLimitExceeded                       # ✅ keep
-from app.core.limiter import limiter                               # ✅ CHANGE — import from new file 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.limiter import limiter
 from app.database import engine, Base
-from app.routers import auth, weather, schemes, contact, guides, gram_awaaz, vikas_prastav, gram_sabha, neta_report_card, vendor_listings, job_alerts, community_members, banners, promises
+from app.routers import (
+    auth, weather, schemes, contact, guides, gram_awaaz, vikas_prastav,
+    gram_sabha, neta_report_card, vendor_listings, job_alerts,
+    community_members, banners, promises,
+    items, units,
+    uploads
+)
 
-# Importing models so SQLAlchemy knows they exist before
-# create_all() runs. Without these imports, the tables
-# would never be created — Base wouldn't know about them.
+# Model imports — required so Alembic --autogenerate sees them.
 from app.models import user, otp
 from app.models import contact as contact_model
 from app.models import scheme as scheme_model
@@ -40,12 +29,9 @@ from app.models import job_alert as job_alert_model
 from app.models import community_member as community_member_model
 from app.models import banner as banner_model
 from app.models import promise as promise_model
+from app.models import item as item_model                           # ✅ NEW
+from app.models import unit as unit_model                           # ✅ NEW
 
-# Create all tables that are registered with Base.
-# Safe to run every startup — skips tables that already exist.
-Base.metadata.create_all(bind=engine)
-
-# Create the FastAPI app instance.
 app = FastAPI(
     title="Gram Seva API",
     version="1.0.0",
@@ -63,15 +49,18 @@ app.include_router(contact.router, prefix="/contacts", tags=["Contacts"])
 app.include_router(guides.router)
 app.include_router(gram_awaaz.router)
 app.include_router(vikas_prastav.router)
-app.include_router(gram_sabha.router)
+# app.include_router(gram_sabha.router)
 app.include_router(neta_report_card.router)
+app.include_router(items.router)
+app.include_router(units.router)
+app.include_router(uploads.router)                                                  # ✅ NEW
 app.include_router(vendor_listings.router)
 app.include_router(job_alerts.router)
 app.include_router(community_members.router)
 app.include_router(banners.router)
 app.include_router(promises.router)
 
-# Health check endpoint — confirms the server is running.
+
 @app.get("/")
 def root():
     return {"message": "Gram Seva API is running 🏡"}

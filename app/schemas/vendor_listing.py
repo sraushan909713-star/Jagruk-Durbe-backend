@@ -2,29 +2,31 @@
 # ─────────────────────────────────────────────────────────────
 # Pydantic schemas for vendor listings API.
 #
-# VendorListingCreate  → vendor posts a new listing
-# VendorListingUpdate  → vendor updates price/stock
-# VendorListingResponse → what the app receives
+# VendorListingCreate   → vendor posts a new listing
+# VendorListingUpdate   → vendor updates price/unit/stock/notes
+#                         (item_id and mode are LOCKED after create —
+#                          if vendor wants a different item, they
+#                          create a new listing and delete the old)
+# VendorListingResponse → what the app receives, with joined fields
 # ─────────────────────────────────────────────────────────────
 
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-from app.models.vendor_listing import VendorCategory, StockStatus
+from app.models.vendor_listing import TradeMode, StockStatus
 
 
 # — REQUEST SCHEMAS ───────────────────────────────────────────
 
 class VendorListingCreate(BaseModel):
     """
-    Used when a Vendor creates a new product listing.
-    vendor_id and vendor_name are taken from their JWT token — not sent manually.
+    Vendor creates a new listing.
+    vendor_id and vendor_name are taken from JWT — not sent manually.
     """
-    product_name: str                           # "Paddy (Dhan)"
-    product_name_hindi: Optional[str] = None   # "धान"
-    category: VendorCategory                   # crops / animal_feed
-    price: float                                 # "2100"
-    unit: str                                  # "per quintal"
+    item_id: str
+    unit_id: str
+    mode: TradeMode
+    price: float
     stock_status: StockStatus = StockStatus.in_stock
     notes: Optional[str] = None
     village_id: str = "1"
@@ -32,15 +34,12 @@ class VendorListingCreate(BaseModel):
 
 class VendorListingUpdate(BaseModel):
     """
-    Used when Vendor updates an existing listing.
-    Most common use: update today's price and stock status.
-    All fields optional — only send what changed.
+    Vendor updates an existing listing.
+    Most common use: just send {"price": 47} for a daily price refresh.
+    item_id and mode are NOT updatable — locked after create.
     """
-    product_name: Optional[str] = None
-    product_name_hindi: Optional[str] = None
-    category: Optional[VendorCategory] = None
+    unit_id: Optional[str] = None
     price: Optional[float] = None
-    unit: Optional[str] = None
     stock_status: Optional[StockStatus] = None
     notes: Optional[str] = None
 
@@ -49,23 +48,27 @@ class VendorListingUpdate(BaseModel):
 
 class VendorListingResponse(BaseModel):
     """
-    Returned by the API in every vendor listing response.
-    Flutter app uses updated_at to show "last updated X hours ago".
+    Returned with the joined item and unit names so Flutter doesn't
+    need to fetch the catalog separately for every listing.
     """
     id: str
     village_id: str
     vendor_id: str
     vendor_name: str
-    product_name: str
-    product_name_hindi: Optional[str]
-    category: VendorCategory
+    vendor_phone: Optional[str]
+    item_id: str
+    item_name: Optional[str]            # joined from items.name
+    item_name_hindi: Optional[str]      # joined from items.name_hindi
+    unit_id: str
+    unit_name: Optional[str]            # joined from units.name
+    unit_name_hindi: Optional[str]      # joined from units.name_hindi
+    mode: TradeMode
     price: float
-    unit: str
     stock_status: StockStatus
     notes: Optional[str]
     is_active: bool
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime]
 
     class Config:
         from_attributes = True

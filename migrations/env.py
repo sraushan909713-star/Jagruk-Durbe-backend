@@ -29,6 +29,9 @@ import app.models.vendor_listing       # ✅ singular — matches actual filenam
 import app.models.job_alert            # ✅ singular — matches actual filename
 import app.models.community_member     # ✅ singular — matches actual filename
 import app.models.banner               # ✅ singular — matches actual filename
+import app.models.promise
+import app.models.item   # ✅ NEW
+import app.models.unit   # ✅ NEW
 
 
 target_metadata = Base.metadata  # ✅ CHANGE: was None

@@ -5,3 +5,28 @@ __pycache__/
 .DS_Store
 *.db
 gramseva.db*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment
+.env
+
+# Database backups (keep main DB out too if you prefer)
+*.db.backup-*
+*.db.before_*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

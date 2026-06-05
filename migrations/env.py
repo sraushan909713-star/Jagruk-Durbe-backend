@@ -1,4 +1,5 @@
 from logging.config import fileConfig
+import os
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -9,6 +10,22 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
+# ─── Production override ────────────────────────────────────
+# Alembic by default reads sqlalchemy.url from alembic.ini, which is
+# hardcoded to the local SQLite file. In production (Railway), we want
+# Alembic to use the DATABASE_URL from the environment instead — same
+# as the FastAPI app does via app/database.py.
+#
+# Falls back to alembic.ini when DATABASE_URL isn't set (local dev).
+db_url = os.environ.get("DATABASE_URL")
+if db_url:
+    # Railway/Heroku use legacy "postgres://" prefix.
+    # SQLAlchemy 2.0+ requires "postgresql://".
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    config.set_main_option("sqlalchemy.url", db_url)
+# ────────────────────────────────────────────────────────────
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
@@ -16,22 +33,6 @@ if config.config_file_name is not None:
 
 # This tells Alembic about all our tables so it can auto-generate migrations
 from app.database import Base
-import app.models.user   # ✅ ADD: registers User model with Base
-import app.models.otp    # ✅ ADD: registers OTP model with Base
-import app.models.scheme
-import app.models.contact
-import app.models.guide
-import app.models.gram_awaaz
-import app.models.vikas_prastav
-import app.models.gram_sabha
-import app.models.neta_report_card
-import app.models.vendor_listing       # ✅ singular — matches actual filename
-import app.models.job_alert            # ✅ singular — matches actual filename
-import app.models.community_member     # ✅ singular — matches actual filename
-import app.models.banner               # ✅ singular — matches actual filename
-import app.models.promise
-import app.models.item   # ✅ NEW
-import app.models.unit   # ✅ NEW
 
 
 target_metadata = Base.metadata  # ✅ CHANGE: was None

@@ -20,7 +20,7 @@
 
 import enum
 import uuid
-from sqlalchemy import Column, String, Boolean, Date, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, String, Boolean, Date, DateTime, Enum
 from sqlalchemy.sql import func
 from app.database import Base
 

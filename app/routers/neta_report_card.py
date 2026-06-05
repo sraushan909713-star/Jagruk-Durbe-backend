@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app.models.neta_report_card import Neta, RatingWindow, NetaRating
@@ -39,56 +39,13 @@ from app.schemas.neta_report_card import (
     RatingWindowResponse, NetaHistoryResponse, RatingHistoryPoint
 )
 from app.core.security import decode_access_token
+from app.core.deps import require_admin, require_super_admin, require_verified
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 router = APIRouter(
     prefix="/neta",
     tags=["Neta Report Card"]
 )
-
-bearer_scheme = HTTPBearer()
-
-
-# ─────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
-
-
-def require_verified(current_user: User = Depends(get_current_user)) -> User:
-    """Only Durbe Niwasi (verified) users can rate."""
-    if not current_user.is_verified:
-        raise HTTPException(
-            status_code=403,
-            detail="Only verified Durbe residents (Durbe Niwasi) can submit ratings."
-        )
-    return current_user
-
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    return current_user
-
-
-def require_super_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != "super_admin":
-        raise HTTPException(status_code=403, detail="Super Admin access required.")
-    return current_user
-
-
 def _get_active_window(db: Session) -> RatingWindow | None:
     """
     Returns the currently open rating window, or None.
@@ -96,7 +53,7 @@ def _get_active_window(db: Session) -> RatingWindow | None:
       - now is between opens_at and closes_at
       - is_hidden is False
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     return db.query(RatingWindow).filter(
         RatingWindow.opens_at  <= now,
         RatingWindow.closes_at >= now,
@@ -128,7 +85,7 @@ def get_window_status(db: Session = Depends(get_db)):
     Returns the current rating window state.
     Flutter uses this to show/hide the rating UI and display countdown.
     """
-    now    = datetime.utcnow()
+    now    = datetime.now(timezone.utc)
     window = db.query(RatingWindow).filter(
         RatingWindow.opens_at <= now,
         RatingWindow.closes_at >= now
@@ -252,7 +209,7 @@ def get_neta_history(neta_id: str, db: Session = Depends(get_db)):
     if not neta:
         raise HTTPException(status_code=404, detail="Leader not found.")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # ── Fetch all closed windows that have at least one rating ─
     closed_windows = db.query(RatingWindow).filter(

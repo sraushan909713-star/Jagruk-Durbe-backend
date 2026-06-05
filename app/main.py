@@ -6,31 +6,17 @@ from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.limiter import limiter
-from app.database import engine, Base
 from app.routers import (
     auth, weather, schemes, contact, guides, gram_awaaz, vikas_prastav,
-    gram_sabha, neta_report_card, vendor_listings, job_alerts,
+    neta_report_card, vendor_listings, job_alerts,
     community_members, banners, promises,
     items, units,
     uploads
 )
 
-# Model imports — required so Alembic --autogenerate sees them.
-from app.models import user, otp
-from app.models import contact as contact_model
-from app.models import scheme as scheme_model
-from app.models import guide as guide_model
-from app.models import gram_awaaz as gram_awaaz_model
-from app.models import vikas_prastav as vikas_prastav_model
-from app.models import gram_sabha as gram_sabha_model
-from app.models import neta_report_card as neta_report_card_model
-from app.models import vendor_listing as vendor_listing_model
-from app.models import job_alert as job_alert_model
-from app.models import community_member as community_member_model
-from app.models import banner as banner_model
-from app.models import promise as promise_model
-from app.models import item as item_model                           # ✅ NEW
-from app.models import unit as unit_model                           # ✅ NEW
+# Note: Model imports for Alembic registration live in migrations/env.py.
+# main.py does not need to import models — routers import them as needed,
+# and SQLAlchemy registers them with Base on first import.
 
 app = FastAPI(
     title="Gram Seva API",

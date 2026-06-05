@@ -21,7 +21,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from datetime import datetime
 
 from app.database import get_db
 from app.models.promise import Promise, PromiseWitness
@@ -31,54 +30,17 @@ from app.schemas.promise import (
     PromiseResponse, WitnessResponse
 )
 from app.core.security import decode_access_token
+from app.core.deps import get_current_user, require_admin, require_verified
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 router = APIRouter(
     prefix="/promises",
     tags=["Promises"]
 )
-
-bearer_scheme = HTTPBearer()
-
-
-# ─────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or deactivated.")
-    return user
-
-
-def require_verified(current_user: User = Depends(get_current_user)) -> User:
-    """Only Durbe Niwasi (verified) users can witness a promise."""
-    if not current_user.is_verified:
-        raise HTTPException(
-            status_code=403,
-            detail="Only verified Durbe residents (Durbe Niwasi) can confirm promises."
-        )
-    return current_user
-
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    return current_user
-
-
 def _build_response(
     promise: Promise,
     db: Session,
-    current_user_id: str = None
+    current_user_id: str | None = None
 ) -> PromiseResponse:
     """Builds a PromiseResponse with computed witness_count and has_witnessed."""
     witness_count = db.query(PromiseWitness).filter(

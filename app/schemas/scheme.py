@@ -5,7 +5,7 @@
 # Think of schemas as the "contract" between the API and the Flutter app.
 # ─────────────────────────────────────────────
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from app.models.scheme import SchemeCategory

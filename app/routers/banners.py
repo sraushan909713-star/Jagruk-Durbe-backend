@@ -17,49 +17,15 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from app.database import get_db
 from app.models.banner import Banner, BannerContact
 from app.models.user import User
 from app.schemas.banner import BannerCreate, BannerUpdate
-from app.core.security import decode_access_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from app.core.deps import require_super_admin
 router = APIRouter(prefix="/banners", tags=["Banners"])
-bearer_scheme = HTTPBearer()
-
-
-# ─── Helpers ─────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
-
-
-def require_super_admin(
-    current_user: User = Depends(get_current_user)
-) -> User:
-    role = current_user.role.value if hasattr(current_user.role, "value") \
-        else current_user.role
-    if role != "super_admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Super Admin access required to manage banners."
-        )
-    return current_user
-
-
 def _serialize_banner(banner: Banner) -> dict:
     """
     Builds the full banner response including nested tagged contacts.
@@ -134,7 +100,7 @@ def get_active_banners(db: Session = Depends(get_db)):
     Returns active, non-expired banners sorted by display_order.
     Flutter calls this on home screen load. No login required.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     banners = db.query(Banner).filter(
         Banner.is_active == True,
     ).order_by(Banner.display_order.asc()).all()

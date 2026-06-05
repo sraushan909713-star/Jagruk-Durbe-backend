@@ -13,62 +13,12 @@ from app.database import get_db
 from app.models.scheme import Scheme, SchemeCategory
 from app.models.user import User
 from app.schemas.scheme import SchemeCreate, SchemeUpdate, SchemeResponse, SchemeListResponse
-from app.core.security import decode_access_token
+from app.core.deps import require_admin
 
 router = APIRouter(
     prefix="/schemes",
     tags=["Government Schemes"]
 )
-
-# ─────────────────────────────────────────────
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-# ✅ CHANGE: Use HTTPBearer instead of OAuth2PasswordBearer
-# This shows a clean "Bearer token" input in Swagger UI
-bearer_scheme = HTTPBearer()
-
-
-# ─────────────────────────────────────────────
-# HELPER: Get the currently logged-in user from JWT token
-# ─────────────────────────────────────────────
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials  # ✅ ADD: extract token from Bearer credentials
-    """
-    Decodes the JWT token from the request header.
-    Returns the User object if token is valid.
-    Raises 401 if token is missing or invalid.
-    """
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-
-    return user
-
-
-# ─────────────────────────────────────────────
-# HELPER: Verify the user is Admin or Super Admin
-# ─────────────────────────────────────────────
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """
-    Checks if the logged-in user has admin or super_admin role.
-    Raises 403 Forbidden if they don't.
-    Regular villagers cannot add/edit/delete schemes.
-    """
-    if current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(
-            status_code=403,
-            detail="Access denied. Only Admins can manage schemes."
-        )
-    return current_user
-
-
 # ─────────────────────────────────────────────
 # PUBLIC ENDPOINTS (no login required)
 # ─────────────────────────────────────────────

@@ -20,40 +20,11 @@ from app.database import get_db
 from app.models.community_member import CommunityMember
 from app.models.user import User
 from app.schemas.community_member import CommunityMemberCreate, CommunityMemberResponse
-from app.core.security import decode_access_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from app.core.deps import require_admin
 router = APIRouter(
     prefix="/community-members",
     tags=["Community Members"]
 )
-
-bearer_scheme = HTTPBearer()
-
-
-# ── HELPERS ───────────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
-
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Only Admin or Super Admin can add/remove members."""
-    if current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(status_code=403, detail="Access denied.")
-    return current_user
-
-
 # ── PUBLIC ENDPOINTS ──────────────────────────────────────────────
 
 @router.get("/job/{job_id}", response_model=List[CommunityMemberResponse])

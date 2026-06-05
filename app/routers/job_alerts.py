@@ -28,39 +28,11 @@ from app.schemas.job_alert import (
     JobAlertListResponse, JobAlertResponse,
     JobApplicantCreate, JobApplicantResponse
 )
-from app.core.security import decode_access_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from app.core.deps import require_admin
 router = APIRouter(
     prefix="/job-alerts",
     tags=["Job Alerts"]
 )
-
-bearer_scheme = HTTPBearer()
-
-
-# ─── Helpers ─────────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
-
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(status_code=403, detail="Access denied. Admins only.")
-    return current_user
-
-
 # ─── PUBLIC ENDPOINTS ────────────────────────────────────────────
 
 @router.get("", response_model=List[JobAlertListResponse])

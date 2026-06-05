@@ -1,50 +1,20 @@
 # app/routers/auth.py
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timezone
 from app.database import get_db
 from app.core.otp import create_otp, verify_otp
-from app.core.security import hash_password, create_access_token, verify_password, decode_access_token
+from app.core.security import hash_password, create_access_token, verify_password
 from app.models.otp import OTPPurpose
 from app.models.user import User, UserRole
 from app.schemas.auth import SendOTPRequest, RegisterRequest, TokenResponse, LoginRequest, ResetPasswordRequest
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from app.core.limiter import limiter
+from app.core.deps import get_current_user, require_admin
 from fastapi import Request
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-bearer_scheme = HTTPBearer()
-
-
-# ─── Helpers ─────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or deactivated.")
-    return user
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    return current_user
-
-def require_super_admin(current_user: User = Depends(get_current_user)) -> User:  # ✅ NEW
-    if current_user.role != UserRole.super_admin:
-        raise HTTPException(status_code=403, detail="Super Admin access required.")
-    return current_user
-
-
 # ─── Request schemas ──────────────────────────────────────────
 
 class ClaimResidencyRequest(BaseModel):
@@ -128,14 +98,14 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
 def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
-    """Login with phone + password."""
-    user = db.query(User).filter(User.phone == body.phone).first()
-    if not user:
-        raise HTTPException(status_code=400,
-            detail="No account found with this phone number")
+    """Login with phone + password.
 
-    if not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=400, detail="Incorrect password")
+    Uses generic "Invalid phone or password" for both "no such user" and
+    "wrong password" cases — prevents phone enumeration via the login form.
+    """
+    user = db.query(User).filter(User.phone == body.phone).first()
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Invalid phone or password.")
 
     if not user.is_active:
         raise HTTPException(status_code=400,
@@ -147,35 +117,32 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
         "badge": user.badge,
     })
 
-    # Return full user info so Flutter can save to SharedPreferences
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "id": str(user.id),
-        "role": user.role.value,
-        "badge": user.badge,
-        "is_verified": user.is_verified,
-        "full_name": user.full_name,
-        "phone": user.phone,
-        "profile_photo_url": user.profile_photo_url,
-    }
+    # Flutter fetches user details via /auth/me after login — no need to
+    # return profile fields here. response_model=TokenResponse strips them
+    # anyway, so any extra fields would be dead code.
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @router.post("/reset-password", response_model=TokenResponse)
 @limiter.limit("5/minute")
 def reset_password(request: Request, body: ResetPasswordRequest, db: Session = Depends(get_db)):
-    """Reset forgotten password using OTP verification."""
-    user = db.query(User).filter(User.phone == body.phone).first()
-    if not user:
-        raise HTTPException(status_code=400,
-            detail="No account found with this phone number")
+    """Reset forgotten password using OTP verification.
 
+    Uses generic "Invalid OTP" for both "no such user" and "OTP wrong"
+    cases — prevents phone enumeration. An attacker without a valid OTP
+    cannot tell which phones are registered.
+    """
     otp_valid = verify_otp(
         db, phone=body.phone, code=body.otp_code,
         purpose=OTPPurpose.reset_password
     )
     if not otp_valid:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
+
+    user = db.query(User).filter(User.phone == body.phone).first()
+    if not user:
+        # Same message as invalid OTP — don't reveal whether the phone is registered
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
 
     user.password_hash = hash_password(body.new_password)
     db.commit()
@@ -299,7 +266,7 @@ def verify_user(
     user.is_durbe_resident      = True
     user.verification_photo_url = user.profile_photo_url    # ✅ NEW — lock in the audit photo
     user.verified_by            = current_user.id           # audit: who approved
-    user.verified_at            = datetime.utcnow()         # audit: when approved
+    user.verified_at            = datetime.now(timezone.utc)  # audit: when approved
     db.commit()
 
     return {
@@ -359,14 +326,21 @@ def get_all_users(
     current_user: User = Depends(require_admin)
 ):
     """
-    Admin gets list of all active registered users.
-    Returns name, role, badge, photo only — NO phone (privacy).
-    ✅ Now ALSO returns verification_photo_url so admin can
-       inspect the original audit photo in the member detail screen.
+    Admin gets list of all users that are eligible for moderation.
+
+    Returns:
+      - Active users (is_active=True)
+      - Suspended users (is_active=False AND deleted_at IS NULL)
+    Excludes:
+      - Deleted users (deleted_at IS NOT NULL) — they're gone, no reactivation
+    No phone field returned (privacy).
     """
-    users = db.query(User).filter(
-        User.is_active == True
-    ).order_by(User.created_at.desc()).all()
+    users = (
+        db.query(User)
+        .filter(User.deleted_at.is_(None))      # exclude only DELETED users
+        .order_by(User.created_at.desc())
+        .all()
+    )
 
     return [
         {
@@ -375,9 +349,14 @@ def get_all_users(
             "role":                   u.role.value,
             "badge":                  u.badge,
             "profile_photo_url":      u.profile_photo_url,
-            "verification_photo_url": u.verification_photo_url,    # ✅ NEW
+            "verification_photo_url": u.verification_photo_url,
             "verified_at":            u.verified_at.isoformat() if u.verified_at else None,
             "created_at":             u.created_at.isoformat()    if u.created_at    else None,
+            # ✅ NEW — needed by the Flutter admin panel to show Suspend vs
+            # Reactivate buttons and a visual "suspended" indicator.
+            "is_active":              u.is_active,
+            "deactivated_by":         u.deactivated_by,
+            "deactivated_at":         u.deactivated_at.isoformat() if u.deactivated_at else None,
         }
         for u in users
     ]
@@ -523,7 +502,7 @@ def delete_account(
     current_user.is_durbe_resident      = False
     current_user.verified_by            = None
     current_user.verified_at            = None
-    current_user.deleted_at             = datetime.utcnow()
+    current_user.deleted_at             = datetime.now(timezone.utc)
     db.commit()
 
     return {"message": "Your account has been deleted. Your posts will remain under 'Deleted user'."}
@@ -586,3 +565,100 @@ def change_user_role(
     user.role = UserRole(data.role)
     db.commit()
     return {"message": f"{user.full_name} is now {data.role}."}
+
+
+# ─── Admin-initiated suspension (deactivate / reactivate) ─────
+# Distinct from /delete-account (which is user-initiated and renames
+# the phone to free it for reuse). Suspension preserves the user's
+# identity intact so they can be reactivated cleanly. See the column
+# comments in app/models/user.py for the "suspended vs deleted" rule.
+
+@router.post("/users/{user_id}/deactivate")
+def deactivate_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Admin or Super Admin suspends a user.
+
+    Sets is_active=False. The user's JWTs immediately stop working
+    on all routes (via the centralized get_current_user check). Audit
+    fields deactivated_by + deactivated_at are populated.
+
+    Refuses to: act on super_admin, act on self, act on a user that
+    was already deleted via /delete-account, or act on an already-
+    suspended user (idempotency signal).
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if user.role == UserRole.super_admin:
+        raise HTTPException(status_code=403,
+            detail="Cannot suspend a Super Admin.")
+
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400,
+            detail="You cannot suspend your own account.")
+
+    if user.deleted_at is not None:
+        raise HTTPException(status_code=400,
+            detail="This user has been deleted, not suspended. Cannot deactivate.")
+
+    if not user.is_active:
+        raise HTTPException(status_code=400,
+            detail="This user is already suspended.")
+
+    user.is_active      = False
+    user.deactivated_by = current_user.id
+    user.deactivated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": f"{user.full_name} has been suspended.",
+        "user_id": str(user.id),
+        "is_active": user.is_active,
+        "deactivated_by": str(user.deactivated_by) if user.deactivated_by else None,
+        "deactivated_at": user.deactivated_at.isoformat() if user.deactivated_at else None,
+    }
+
+
+@router.post("/users/{user_id}/reactivate")
+def reactivate_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Admin or Super Admin lifts a previous suspension.
+
+    Sets is_active=True and clears deactivated_by/deactivated_at.
+    The user can log back in immediately with their existing credentials.
+
+    Refuses to: act on a user that was deleted (use /register fresh),
+    or act on a user that's already active (idempotency signal).
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if user.deleted_at is not None:
+        raise HTTPException(status_code=400,
+            detail="This user was deleted, not suspended. Cannot reactivate "
+                   "— they must register again.")
+
+    if user.is_active:
+        raise HTTPException(status_code=400,
+            detail="This user is already active.")
+
+    user.is_active      = True
+    user.deactivated_by = None
+    user.deactivated_at = None
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": f"{user.full_name} has been reactivated.",
+        "user_id": str(user.id),
+        "is_active": user.is_active,
+    }

@@ -90,8 +90,10 @@ def is_image_safe(image_bytes: bytes) -> Tuple[bool, Optional[str]]:
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)
-            except Exception:
-                pass
+            except Exception as cleanup_err:
+                # Cleanup failure must NOT propagate (request already succeeded
+                # or failed for its own reasons), but it should be visible in logs.
+                logger.warning(f"Failed to delete temp file {tmp_path}: {cleanup_err}")
 
 
 def warmup_detector():

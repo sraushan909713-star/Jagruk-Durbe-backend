@@ -25,44 +25,8 @@ from app.models.item import Item
 from app.models.vendor_listing import VendorListing
 from app.models.user import User, UserRole
 from app.schemas.item import ItemCreate, ItemUpdate, ItemResponse
-from app.core.security import decode_access_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from app.core.deps import require_admin, require_vendor_or_admin
 router = APIRouter(prefix="/items", tags=["Items — Mandi Catalog"])
-
-bearer_scheme = HTTPBearer()
-
-
-# ─────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
-
-
-def require_vendor_or_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in [UserRole.vendor, UserRole.admin, UserRole.super_admin]:
-        raise HTTPException(status_code=403, detail="Only vendors or admins can add items.")
-    return current_user
-
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in [UserRole.admin, UserRole.super_admin]:
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    return current_user
-
-
 # ─────────────────────────────────────────────────────────────
 # PUBLIC ENDPOINTS
 # ─────────────────────────────────────────────────────────────

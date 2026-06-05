@@ -75,7 +75,7 @@ class User(Base):
 
     verified_at = Column(DateTime, nullable=True)
 
-    # Is this account active? False = soft-deleted (by user or admin).
+    # Is this account active? False = soft-deleted (by user) or suspended (by admin).
     # We never hard-delete users — we just deactivate them.
     # This preserves data integrity (their posts, votes etc. remain).
     is_active = Column(Boolean, default=True, nullable=False)
@@ -83,6 +83,17 @@ class User(Base):
     # When the user self-deleted their account. NULL for active users.
     # Audit field. Useful if we add a 30-day cooling-off period later.
     deleted_at = Column(DateTime, nullable=True)                          # ✅ NEW
+
+    # ── Admin-initiated suspension audit ────────────────────────
+    # These are populated when an admin uses the /deactivate endpoint
+    # (NOT when a user self-deletes via /delete-account — that path uses
+    # deleted_at instead). The reactivate endpoint clears both.
+    #
+    # A user is "suspended" if is_active=False AND deleted_at IS NULL.
+    # A user is "deleted"   if is_active=False AND deleted_at IS NOT NULL.
+    # Only suspended users can be reactivated.
+    deactivated_by = Column(String, nullable=True)
+    deactivated_at = Column(DateTime, nullable=True)
 
     shop_name = Column(String, nullable=True)
 

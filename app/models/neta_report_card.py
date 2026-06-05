@@ -16,7 +16,7 @@
 
 import uuid
 from sqlalchemy import (
-    Column, String, Text, Integer, Float,
+    Column, String, Integer,
     Boolean, DateTime, ForeignKey, UniqueConstraint
 )
 from sqlalchemy.sql import func

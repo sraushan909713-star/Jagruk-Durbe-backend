@@ -16,54 +16,11 @@ from app.schemas.vikas_prastav import (
     VikasPrastavCreate, VikasPrastavResponse,
     VikasPrastavListResponse, UpvoteResponse
 )
-from app.core.security import decode_access_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from app.core.deps import require_admin, require_verified
 router = APIRouter(
     prefix="/vikas-prastav",
     tags=["Vikas Prastav"]
 )
-
-bearer_scheme = HTTPBearer()
-
-
-# ─────────────────────────────────────────────
-# HELPER: Get current logged-in user
-# ─────────────────────────────────────────────
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
-
-
-# ─────────────────────────────────────────────
-# HELPER: Admin check
-# ─────────────────────────────────────────────
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(status_code=403, detail="Access denied.")
-    return current_user
-
-def require_verified(current_user: User = Depends(get_current_user)) -> User:
-    """Durbe Niwasi residents and admins can post complaints."""
-    if current_user.role in ("admin", "super_admin"):
-        return current_user
-    if not current_user.is_verified:
-        raise HTTPException(
-            status_code=403,
-            detail="Only verified Durbe Niwasi residents can post complaints."
-        )
-    return current_user
-
-
 # ─────────────────────────────────────────────
 # PUBLIC ENDPOINTS
 # ─────────────────────────────────────────────

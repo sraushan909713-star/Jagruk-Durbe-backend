@@ -2,15 +2,15 @@
 # ============================================================
 # This file contains the core logic for creating and verifying OTPs.
 
-import random
+import secrets
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.models.otp import OTP, OTPPurpose  # ✅ import OTPPurpose too since your model has it
 
 
 def generate_otp_code() -> str:
-    """Generate a random 6-digit OTP, zero-padded (e.g. 004521)."""
-    return str(random.randint(0, 999999)).zfill(6)
+    """Generate a cryptographically secure random 6-digit OTP, zero-padded (e.g. 004521)."""
+    return str(secrets.randbelow(1_000_000)).zfill(6)
 
 
 def create_otp(db: Session, phone: str, purpose: OTPPurpose) -> str:

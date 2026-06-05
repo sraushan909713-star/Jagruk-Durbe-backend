@@ -22,9 +22,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.database import get_db
 from app.models.vendor_listing import VendorListing, TradeMode
@@ -34,42 +33,11 @@ from app.models.user import User, UserRole
 from app.schemas.vendor_listing import (
     VendorListingCreate, VendorListingUpdate, VendorListingResponse
 )
-from app.core.security import decode_access_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from app.core.deps import require_vendor_or_admin
 router = APIRouter(
     prefix="/vendor-listings",
     tags=["Vendor Listings — Mandi Prices"]
 )
-
-bearer_scheme = HTTPBearer()
-
-
-# ─────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
-
-
-def require_vendor(current_user: User = Depends(get_current_user)) -> User:
-    """Only vendor / admin / super_admin can write."""
-    if current_user.role not in [UserRole.vendor, UserRole.admin, UserRole.super_admin]:
-        raise HTTPException(status_code=403, detail="Only vendors can manage listings.")
-    return current_user
-
-
 def _serialize_with_joins(listing: VendorListing, item: Optional[Item], unit: Optional[Unit], vendor_user: Optional[User],) -> dict:
     """
     Build the response payload with joined item and unit names.
@@ -130,13 +98,13 @@ def _fetch_listings(
     if only_vendor:
         q = q.filter(VendorListing.vendor_id == only_vendor)
     if max_age_days is not None:
-        cutoff = datetime.utcnow() - timedelta(days=max_age_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
         q = q.filter(VendorListing.updated_at >= cutoff)
 
     # Freshest first
     q = q.order_by(VendorListing.updated_at.desc())
 
-    return [_serialize_with_joins(l, i, u, vu) for (l, i, u, vu) in q.all()]   # ✅
+    return [_serialize_with_joins(lst, i, u, vu) for (lst, i, u, vu) in q.all()]   # ✅
 
 
 # ─────────────────────────────────────────────────────────────
@@ -170,7 +138,7 @@ def list_listings(
 @router.get("/my/", response_model=List[VendorListingResponse])
 def list_my_listings(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_vendor),
+    current_user: User = Depends(require_vendor_or_admin),
 ):
     """
     Vendor's own listings only.
@@ -205,7 +173,7 @@ def get_listing(listing_id: str, db: Session = Depends(get_db)):
 def create_listing(
     data: VendorListingCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_vendor),
+    current_user: User = Depends(require_vendor_or_admin),
 ):
     """
     Vendor creates a new listing.
@@ -249,7 +217,7 @@ def update_listing(
     listing_id: str,
     data: VendorListingUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_vendor),
+    current_user: User = Depends(require_vendor_or_admin),
 ):
     """
     Update price / unit / stock / notes.
@@ -286,7 +254,7 @@ def update_listing(
 def delete_listing(
     listing_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_vendor),
+    current_user: User = Depends(require_vendor_or_admin),
 ):
     """
     Soft delete. Vendor can delete own; admin/super_admin can delete any.
@@ -308,3 +276,43 @@ def delete_listing(
     listing.is_active = False
     db.commit()
     return {"message": "Listing deleted."}
+
+@router.get("/vendors/")
+def list_active_vendors(
+    village_id: str = Query("1"),
+    db: Session = Depends(get_db),
+):
+    """
+    Public endpoint — returns distinct vendors with at least one
+    active listing in this village. Used by the vendor filter on
+    the Mandi home screen for ALL users (villagers, vendors, admins).
+    Only includes vendors with active listings, so the filter never
+    shows a vendor who has nothing to filter for.
+    """
+    # Get unique vendor_ids that currently have active listings
+    vendor_ids_subq = (
+        db.query(VendorListing.vendor_id)
+        .filter(
+            VendorListing.is_active == True,
+            VendorListing.village_id == village_id,
+        )
+        .distinct()
+        .subquery()
+    )
+
+    # Fetch full User records for those vendors
+    users = (
+        db.query(User)
+        .filter(User.id.in_(vendor_ids_subq))
+        .all()
+    )
+
+    return [
+        {
+            "id": u.id,
+            "full_name": u.full_name,
+            "phone": u.phone,
+            "shop_name": u.shop_name,
+        }
+        for u in users
+    ]

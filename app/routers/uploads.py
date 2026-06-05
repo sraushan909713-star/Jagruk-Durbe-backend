@@ -15,16 +15,13 @@ from io import BytesIO
 from typing import Optional
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
 
 import cloudinary
 import cloudinary.uploader
 
-from app.database import get_db
 from app.models.user import User
-from app.core.security import decode_access_token
 from app.core.nsfw_detector import is_image_safe
+from app.core.deps import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -40,24 +37,6 @@ cloudinary.config(
 # ── Upload constraints ────────────────────────────────────
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 ALLOWED_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
-
-bearer_scheme = HTTPBearer()
-
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db),
-) -> User:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    return user
-
-
 # ─────────────────────────────────────────────────────────────
 # POST /uploads/photo
 # ─────────────────────────────────────────────────────────────

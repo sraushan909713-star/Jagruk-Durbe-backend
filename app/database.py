@@ -1,15 +1,12 @@
 # ============================================================
 # database.py — Database Connection Setup
 # ============================================================
-# This file is responsible for one thing only:
-# connecting our FastAPI app to the database.
+# Handles both:
+#   - SQLite for local dev      (sqlite:///./gramseva.db)
+#   - PostgreSQL for production (postgresql://user:pass@host/db)
 #
-# We are using SQLAlchemy — a library that lets us talk to
-# the database using Python code instead of raw SQL queries.
-#
-# FLOW:
-#   .env file → DATABASE_URL → engine → SessionLocal → get_db()
-#   (config)     (address)    (driver)  (conversations) (injector)
+# Railway-style URLs use the legacy "postgres://" prefix; we
+# rewrite to "postgresql://" because SQLAlchemy 2.0 requires it.
 # ============================================================
 
 from sqlalchemy import create_engine
@@ -18,37 +15,48 @@ from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 import os
 
-# load_dotenv() reads our .env file and makes its values
-# available via os.getenv(). This keeps secrets out of code.
 load_dotenv()
 
-# DATABASE_URL is the full address of our database.
-# Format: "sqlite:///./gramseva.db" for development (SQLite)
-# Later in production this will point to PostgreSQL on Railway.
 DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL is None:
+    raise RuntimeError(
+        "DATABASE_URL is not set. "
+        "Local dev: set it in .env. "
+        "Production: set it in Railway env variables."
+    )
 
-# The engine is the actual connection to the database.
-# Think of it as the pipe between Python and the database.
-engine = create_engine(DATABASE_URL)
+# Railway / Heroku still use the legacy "postgres://" prefix
+# in their auto-generated URLs. SQLAlchemy 2.0+ requires
+# "postgresql://" — rewrite transparently.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# SessionLocal is a factory that creates database sessions.
-# A session = one conversation with the database (open, query, close).
-# autocommit=False → we control when changes are saved
-# autoflush=False  → changes aren't sent until we say so
+# Engine config differs between the two backends.
+if DATABASE_URL.startswith("sqlite"):
+    # SQLite in FastAPI's threaded context needs this flag.
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    # PostgreSQL on Railway — production-grade connection pool.
+    #   pool_pre_ping: detect & recycle dropped connections (Railway can
+    #                  rotate connections behind the scenes).
+    #   pool_size + max_overflow: handle bursts without exhausting the
+    #                  free tier's connection limit.
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+    )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Base is the foundation class for all our database models.
-# Every table we create (users, otps, etc.) will inherit from Base.
-# SQLAlchemy uses Base to track and create all our tables.
 Base = declarative_base()
 
 
-# get_db() is a dependency — FastAPI will call this automatically
-# whenever an API endpoint needs to talk to the database.
-# It opens a session, gives it to the endpoint, then closes it.
-# The try/finally ensures the session ALWAYS closes, even if
-# an error occurs mid-request. No leaked connections.
 def get_db():
+    """FastAPI dependency. Opens a session per request, closes always."""
     db = SessionLocal()
     try:
         yield db

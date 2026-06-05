@@ -18,54 +18,11 @@ from typing import List, Optional
 
 from app.database import get_db
 from app.models.contact import Contact, ContactCategory
+from app.models.user import User
 from app.schemas.contact import ContactCreate, ContactUpdate, ContactResponse
-from app.core.security import decode_access_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-bearer_scheme = HTTPBearer()
-
-from app.models.user import User, UserRole
+from app.core.deps import require_admin
 
 router = APIRouter()
-
-
-# ─────────────────────────────────────────────────────────────
-# HELPER: Verify the user is Admin or Super Admin
-# ─────────────────────────────────────────────────────────────
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    """
-    Decodes the JWT token from the request header.
-    Returns the logged-in User object.
-    Raises 401 if token is invalid or expired.
-    """
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-
-    return user
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """
-    Dependency used by all write endpoints (POST, PUT, DELETE).
-    Raises 403 if the logged-in user is not an Admin or Super Admin.
-    """
-    if current_user.role not in [UserRole.admin, UserRole.super_admin]:
-        raise HTTPException(
-            status_code=403,
-            detail="Access denied. Only Admins can manage contacts."
-        )
-    return current_user
-
-
 # ─────────────────────────────────────────────────────────────
 # PUBLIC ENDPOINTS (no login required)
 # ─────────────────────────────────────────────────────────────

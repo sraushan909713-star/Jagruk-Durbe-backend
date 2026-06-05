@@ -30,9 +30,9 @@ def upgrade():
         sa.Column("id", sa.String(), primary_key=True),
         sa.Column("name", sa.String(), nullable=False, unique=True, index=True),
         sa.Column("name_hindi", sa.String(), nullable=True),
-        sa.Column("is_custom", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_custom", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("created_by_vendor_id", sa.String(), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=func.now()),
     )
@@ -46,9 +46,9 @@ def upgrade():
         sa.Column("default_unit_id", sa.String(), sa.ForeignKey("units.id"), nullable=True),
         sa.Column("category", sa.String(), nullable=True),
         sa.Column("display_order", sa.Integer(), nullable=False, server_default="999"),
-        sa.Column("is_custom", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_custom", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("created_by_vendor_id", sa.String(), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=func.now()),
     )
@@ -57,7 +57,7 @@ def upgrade():
     op.create_table(
         "vendor_listings",
         sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("village_id", sa.String(), nullable=False, server_default="1"),
+        sa.Column("village_id", sa.String(), nullable=False, server_default="true"),
         sa.Column("vendor_id", sa.String(), nullable=False, index=True),
         sa.Column("vendor_name", sa.String(), nullable=False),
         sa.Column("item_id", sa.String(), sa.ForeignKey("items.id"), nullable=False, index=True),
@@ -107,7 +107,7 @@ def downgrade():
     op.create_table(
         "vendor_listings",
         sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("village_id", sa.String(), nullable=False, server_default="1"),
+        sa.Column("village_id", sa.String(), nullable=False, server_default="true"),
         sa.Column("vendor_id", sa.String(), nullable=False),
         sa.Column("vendor_name", sa.String(), nullable=False),
         sa.Column("product_name", sa.String(), nullable=False),
@@ -126,7 +126,7 @@ def downgrade():
             server_default="in_stock",
         ),
         sa.Column("notes", sa.Text(), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=func.now()),
     )

@@ -100,7 +100,7 @@ def get_active_banners(db: Session = Depends(get_db)):
     Returns active, non-expired banners sorted by display_order.
     Flutter calls this on home screen load. No login required.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)                       # ✅ aware UTC
     banners = db.query(Banner).filter(
         Banner.is_active == True,
     ).order_by(Banner.display_order.asc()).all()
@@ -110,9 +110,13 @@ def get_active_banners(db: Session = Depends(get_db)):
         if b.valid_until is None:
             active.append(b)
         else:
-            # Compare naive UTC — strip tzinfo for safe comparison
-            vu = b.valid_until.replace(tzinfo=None) \
-                if b.valid_until.tzinfo else b.valid_until
+            # ✅ CHANGE: coerce stored value to AWARE before comparing.
+            # Postgres may return naive OR aware datetimes; normalize
+            # so both sides match `now` (was stripping the wrong side,
+            # which caused: can't compare offset-naive and offset-aware).
+            vu = b.valid_until
+            if vu.tzinfo is None:
+                vu = vu.replace(tzinfo=timezone.utc)       # ✅ make aware
             if vu > now:
                 active.append(b)
 

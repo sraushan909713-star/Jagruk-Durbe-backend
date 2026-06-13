@@ -45,6 +45,7 @@ class Promise(Base):
     made_on           = Column(Date,    nullable=False)  # date the promise was made
     deadline          = Column(Date,    nullable=True)   # by when it should be fulfilled
     crowd_count       = Column(Integer, nullable=True)   # how many people were present
+    youtube_link      = Column(String,  nullable=True)   # ✅ ADD: optional video proof of the promise
 
     # ── Status ────────────────────────────────────────────────
     # pending → fulfilled / half_delivered / broken

@@ -33,6 +33,7 @@ if config.config_file_name is not None:
 
 # This tells Alembic about all our tables so it can auto-generate migrations
 from app.database import Base
+import app.models
 
 
 target_metadata = Base.metadata  # ✅ CHANGE: was None

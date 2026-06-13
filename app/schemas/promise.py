@@ -20,6 +20,7 @@ class PromiseCreate(BaseModel):
     made_on:           date
     deadline:          Optional[date] = None
     crowd_count:       Optional[int]  = None
+    youtube_link:      Optional[str]  = None   # ✅ ADD
 
     @field_validator("leader_role")
     @classmethod
@@ -62,6 +63,7 @@ class PromiseResponse(BaseModel):
     made_on:           date
     deadline:          Optional[date] = None
     crowd_count:       Optional[int]  = None
+    youtube_link:      Optional[str]  = None   # ✅ ADD
     status:            str
     created_by:        str
     witness_count:     int  = 0        # computed

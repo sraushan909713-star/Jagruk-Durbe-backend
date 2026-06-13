@@ -64,6 +64,7 @@ def _build_response(
         made_on           = promise.made_on,
         deadline          = promise.deadline,
         crowd_count       = promise.crowd_count,
+        youtube_link      = promise.youtube_link,   # ✅ ADD
         status            = promise.status,
         created_by        = promise.created_by,
         witness_count     = witness_count,
@@ -225,6 +226,7 @@ def create_promise(
         made_on           = data.made_on,
         deadline          = data.deadline,
         crowd_count       = data.crowd_count,
+        youtube_link      = data.youtube_link,   # ✅ ADD
         status            = "pending",
         created_by        = current_user.id,
         village_id        = 1,

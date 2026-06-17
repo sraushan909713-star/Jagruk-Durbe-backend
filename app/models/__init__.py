@@ -22,6 +22,8 @@ from app.models import gram_sabha        # noqa: F401
 from app.models import guide             # noqa: F401
 from app.models import item              # noqa: F401
 from app.models import job_alert         # noqa: F401
+from app.models import kyv_question      # noqa: F401
+from app.models import kyv_village       # noqa: F401
 from app.models import neta_report_card  # noqa: F401
 from app.models import otp               # noqa: F401
 from app.models import promise           # noqa: F401

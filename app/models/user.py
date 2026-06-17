@@ -100,3 +100,10 @@ class User(Base):
     # Automatically set to current time when the user registers.
     # server_default=func.now() lets the database set this value.
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    # ── Know Your Village stats ─────────────────────────────────  # ✅ ADD
+    # Total questions this user has answered. Only ever increases
+    # (gentle, never-resets — shown warmly as "8 answered" in UI).
+    kyv_answered_count = Column(Integer, default=0, nullable=False)   # ✅ ADD
+    # Total अंक (points) earned — +10 per correct quiz answer.
+    kyv_points         = Column(Integer, default=0, nullable=False)   # ✅ ADD

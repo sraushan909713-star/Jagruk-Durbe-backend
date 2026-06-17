@@ -11,7 +11,8 @@ from app.routers import (
     neta_report_card, vendor_listings, job_alerts,
     community_members, banners, promises,
     items, units,
-    uploads
+    uploads,
+    kyv                                                                             # ✅ ADD
 )
 
 # Note: Model imports for Alembic registration live in migrations/env.py.
@@ -45,6 +46,7 @@ app.include_router(job_alerts.router)
 app.include_router(community_members.router)
 app.include_router(banners.router)
 app.include_router(promises.router)
+app.include_router(kyv.router)
 
 
 @app.get("/")

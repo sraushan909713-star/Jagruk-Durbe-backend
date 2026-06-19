@@ -26,6 +26,7 @@ from app.models import kyv_question      # noqa: F401
 from app.models import kyv_village       # noqa: F401
 from app.models import neta_report_card  # noqa: F401
 from app.models import otp               # noqa: F401
+from app.models import price_history     # noqa: F401
 from app.models import promise           # noqa: F401
 from app.models import scheme            # noqa: F401
 from app.models import unit              # noqa: F401

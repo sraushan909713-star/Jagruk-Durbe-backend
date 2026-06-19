@@ -33,11 +33,24 @@ from app.models.user import User, UserRole
 from app.schemas.vendor_listing import (
     VendorListingCreate, VendorListingUpdate, VendorListingResponse
 )
+from app.models.price_history import PriceHistory
 from app.core.deps import require_vendor_or_admin
 router = APIRouter(
     prefix="/vendor-listings",
     tags=["Vendor Listings — Mandi Prices"]
 )
+
+# ── Record a price event into history ────────────────────────
+# Called on create and on every price change. No cron — these
+# event rows are all we need; the chart connects them.
+def _record_price(db: Session, listing: VendorListing) -> None:
+    db.add(PriceHistory(
+        item_id   = listing.item_id,
+        vendor_id = listing.vendor_id,
+        mode      = listing.mode,
+        price     = listing.price,
+    ))
+
 def _serialize_with_joins(listing: VendorListing, item: Optional[Item], unit: Optional[Unit], vendor_user: Optional[User],) -> dict:
     """
     Build the response payload with joined item and unit names.
@@ -164,6 +177,43 @@ def get_listing(listing_id: str, db: Session = Depends(get_db)):
     listing, item, unit, vendor_user = row                              # ✅
     return _serialize_with_joins(listing, item, unit, vendor_user)      # ✅
 
+@router.get("/history/{item_id}")
+def get_price_history(
+    item_id: str,
+    mode: TradeMode = Query(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Price trend for one item on one side (buy/sell).
+    Returns every recorded price event, oldest first, with the
+    vendor it belongs to. The Flutter side builds:
+      • the village line  = best price per day (lowest for sell,
+        highest for buy) across vendors
+      • per-vendor lines  = one vendor's own points
+    Flat stretches are drawn by connecting points — no faked rows.
+    """
+    rows = db.query(PriceHistory).filter(
+        PriceHistory.item_id == item_id,
+        PriceHistory.mode == mode,
+    ).order_by(PriceHistory.recorded_at.asc()).all()
+
+    # vendor names (for per-vendor lines) — one lookup, not per row
+    vendor_ids = {r.vendor_id for r in rows}
+    vendors = {}
+    if vendor_ids:
+        for u in db.query(User).filter(User.id.in_(vendor_ids)).all():
+            vendors[u.id] = u.shop_name or u.full_name
+
+    return [
+        {
+            "vendor_id":   r.vendor_id,
+            "vendor_name": vendors.get(r.vendor_id, "—"),
+            "price":       r.price,
+            "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
+        }
+        for r in rows
+    ]
+
 
 # ─────────────────────────────────────────────────────────────
 # VENDOR WRITES
@@ -207,6 +257,8 @@ def create_listing(
         vendor_name=current_user.shop_name or current_user.full_name,
     )
     db.add(listing)
+    db.flush()              # get listing fields populated before snapshot
+    _record_price(db, listing)   # ✅ first price point
     db.commit()
     db.refresh(listing)
     return _serialize_with_joins(listing, item, unit, current_user)     # ✅ vendor is the creator
@@ -238,8 +290,15 @@ def update_listing(
             detail="You can only edit your own listings."
         )
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    # Did the price actually change? Only snapshot if so.
+    updates = data.model_dump(exclude_unset=True)
+    price_changed = 'price' in updates and updates['price'] != listing.price
+
+    for field, value in updates.items():
         setattr(listing, field, value)
+
+    if price_changed:
+        _record_price(db, listing)   # ✅ new price point
 
     db.commit()
     db.refresh(listing)

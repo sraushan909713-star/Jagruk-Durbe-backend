@@ -36,7 +36,7 @@ class PriceHistory(Base):
     # vendor, and combined (lowest/highest) across vendors per item.
     item_id   = Column(String, ForeignKey("items.id"), nullable=False, index=True)
     vendor_id = Column(String, nullable=False, index=True)   # users.id
-    mode      = Column(Enum(TradeMode), nullable=False, index=True)
+    mode      = Column(String, nullable=False, index=True)
 
     # — The recorded price ────────────────────────────────────
     price = Column(Float, nullable=False)

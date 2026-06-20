@@ -47,7 +47,7 @@ def _record_price(db: Session, listing: VendorListing) -> None:
     db.add(PriceHistory(
         item_id   = listing.item_id,
         vendor_id = listing.vendor_id,
-        mode      = listing.mode,
+        mode      = listing.mode.value if hasattr(listing.mode, 'value') else listing.mode,
         price     = listing.price,
     ))
 
@@ -192,9 +192,10 @@ def get_price_history(
       • per-vendor lines  = one vendor's own points
     Flat stretches are drawn by connecting points — no faked rows.
     """
+    mode_str = mode.value if hasattr(mode, 'value') else mode
     rows = db.query(PriceHistory).filter(
         PriceHistory.item_id == item_id,
-        PriceHistory.mode == mode,
+        PriceHistory.mode == mode_str,
     ).order_by(PriceHistory.recorded_at.asc()).all()
 
     # vendor names (for per-vendor lines) — one lookup, not per row

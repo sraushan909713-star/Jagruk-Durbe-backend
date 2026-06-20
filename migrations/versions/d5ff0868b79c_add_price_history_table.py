@@ -25,7 +25,7 @@ def upgrade() -> None:
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('item_id', sa.String(), nullable=False),
     sa.Column('vendor_id', sa.String(), nullable=False),
-    sa.Column('mode', sa.Enum('buy', 'sell', name='trademode', create_type=False), nullable=False),
+    sa.Column('mode', sa.String(), nullable=False),
     sa.Column('price', sa.Float(), nullable=False),
     sa.Column('recorded_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     sa.ForeignKeyConstraint(['item_id'], ['items.id'], ),
